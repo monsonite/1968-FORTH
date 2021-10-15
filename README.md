@@ -1,2 +1,2 @@
 # 1968-FORTH
-Original  Forth for 1BM 1130 written by Charles Moore in 1968.
+Original  Forth for IBM 1130 written by Charles Moore in 1968.

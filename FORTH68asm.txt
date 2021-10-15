@@ -1,0 +1,645 @@
+// JOB                                           
+// ASM                                             
+*LIST ALL                                      
+                          ABS        FORTH
+                          ORG     /900 
+                    CONVE DC         CONVERT EDBCDIC TO FORTH
+                          LD    1 -1   CHARACTER SET
+                          STO     CV1+1
+                          LDX   3 -63
+                    CV1   LD   L3
+                          S     1    A
+                          BZ      CV2
+                          MDX   3 1
+                          B       CV1
+                    CV2   MDX   3 63
+                          NOP
+                          STX   3 TEMP
+                          LD      TEMP
+                          STO   1    A
+                          B    I  CONVE
+                    ACCEP DC         NEXT CHARACTER FROM DISK
+                          LD    1 -3   C
+                          S    L  C2     
+                          BSI  L  RECOR,+-   NEXT RECORD
+                          LD    1 -3   C
+                          BSI     FETCH   
+                          BSI     CONVE   
+                          B    I  ACCEP   
+                    RETRY DC         FROM CORE
+                          LD    1 -3   C
+                          BSI     FETCH
+                          B    I  RETRY
+                    NEXT  DC         NEXT WORD
+                          LD    1 -6   W1
+                          STO   1 2    W
+                          LD      BL2
+                          STO   1 4    WORD+1
+                    NE1   BSI  I1 -2   ACCEPT
+                          LD    1      A
+                          S       BL
+                          BNZ     NE2
+                          LD    1 -3   C 
+                          A       ONE
+                          STO   1 -3   C
+                          B       NE1
+                    NE2   S       SC
+                          BNP     ALPHA
+                          S       THREE
+                          BN      SPECI
+                          S       TWO
+                          BNZ     SPECI
+                    ALPHA LD    1 2   W ALPHABETIC
+                          BSI     DEPOS
+                          BSI  I1 -4   SAVE
+                          LD    1 -3   C
+                          A       ONE
+                          STO   1 -3   C
+                          LD    1 2   W
+                          A       ONE
+                          STO   1 2
+                          BSI  I1 -2   ACCEP
+                          LD    1     A
+                          S       BL
+                          BZ      AL1
+                          BP   I  NEXT
+                          B       ALPHA
+                    AL1   BSI  I1 -4   SAVE
+                          LD    1 -3   C
+                          A       ONE
+                          STO   1 -3   C
+                          B    I  NEXT
+                    SPECI LD    1 2   W  SPECIAL CHARACTER
+                          BSI     DEPOS
+                          BSI  I1 -4   SAVE
+                          LD    1 -3   C
+                          A       ONE
+                          STO   1 -3   C
+                          B    I  NEXT
+                    SC    DC      20
+                    TWO   DC      2
+                    THREE DC      3
+                    BL2   DC      /2424
+                    BL    DC      /24
+                    SAVE  DC         BUILD MEMORY
+                          LD    1 -5   D
+                          A       ONE
+                          STO   1 -5   D
+                          BSI     DEPOS
+                          B    I  SAVE
+                    SAVE0 DC         DUMMY
+                          B    I  SAVE0
+                    ONE   DC      1
+                    TEMP  DC      0
+                    FETCH DC      0   FETCH CHARACTER
+                          SRT     1
+                          STO     TEMP
+                          SLT     1
+                          BOD     FE1
+                          LD   I  TEMP   EVEN CHARACTER
+                          SRA     8
+                          B       FE2
+                    FE1   LD   I  TEMP   ODD CHARACTER
+                          AND     FF
+                    FE2   STO   1    A
+                          B    I  FETCH
+                    FF    DC      /00FF
+                    DEPOS DC         DEPOSIT CHARACTER
+                          SRT     1
+                          STO     TEMP
+                          SLT     1
+                          BOD     DE1
+                          LD    1    A   EVEN CHARACTERS
+                          SLA     10
+                          SRA     2
+                          OR      BL
+                          B       DE2
+                    DE1   LD   I  TEMP   ODD CHARACTER
+                          AND     FF00
+                          OR    1    A
+                    DE2   STO  I  TEMP
+                          B    I  DEPOS
+                    FF00  DC      /FF00
+                    DO    DC         INTERPRET WORD
+                          LDX  I3 E
+                    DO1   MDX   3 -4
+                          LD    3
+                          BZ   I  DO
+                          S     1 3   WORD
+                          BNZ     DO1
+                          LD    3 1
+                          S     1 4   WORD+1
+                          BNZ     DO1
+                          B    I  DO
+                    UNDEF DC         UNDEFINED SYMBOL
+                          LD    1 3   WORD
+                          AND     F000
+                          BSI  L  HEX,+-
+                          B    I  UNDEF
+                    F000  DC      /F000
+                    HEX   DC         HEXADECIMAL LITERAL
+                          LD    1 2   W
+                          S     1 -6   W1
+                          STO     TEMP
+                          LDX  I3 TEMP
+                          MDX   2 1
+                          SRA     16
+                          STO   2
+                          LD    1 -6   W1
+                    HE1   STO   1 2   W
+                          BSI     FETCH
+                          LD    2
+                          SLA     4
+                          OR    1   A
+                          STO   2
+                          LD    1 2   W
+                          A       ONE
+                          MDX   3 -1
+                          B       HE1
+                          B    I  HEX
+                    ENTRY DC         INITIAL ENTRY
+                          BSI  L  NEXT
+                          MDM  L  E1,4
+                          LDX  I3 E1
+                          STX  L3 E
+                          MDM  L  E,4
+                          LD    1 3   WORD
+                          STO   3
+                          LD    1 4   WORD+1
+                          STO   3 1
+                          B    I  ENTRY
+                    ENTER DC         ADD TO SYMBOL TABLE
+                          BSI     ENTRY
+                          LD   L  INTER
+                          STO   3 2
+                          LD   L  IC
+                          SLA     1
+                          A       ONE
+                          STO   1 -5   D
+                          A       ONE
+                          STO   3 3
+                          LD      ASAVE   SKIP OVER DEFINITION
+                          STO   1 -4   SAVE
+                    EN1   BSI  L  NEXT
+                          LD      COMMA
+                          S    L  WORD
+                          BNZ     EN2
+                    EN3   LD    1 -5   D
+                          SRA     1
+                          STO  L  IC
+                          LD      ASAV0
+                          STO   1 -4   SAVE
+                          B    I  ENTER
+                    EN2   LD      DOT
+                          S    L  WORD
+                          BNZ     EN1
+                          B       EN3
+                    ASAVE DC      SAVE
+                    ASAV0 DC      SAVE0
+                    DOT   DC      /3024   SEMICOLON
+                    COMMA DC      /3424   ,
+                    X3    DC
+                          STX   3 X3
+                    START LDX  L2 STACK+1   RESTART LOCATION
+                          LDX  L1 A
+                          LDX  L3 INTST
+                          STX  L3 R
+                          LDX  L3 E2
+                          STX  L3 E1
+                          MDX   3 4
+                          STX  L3 E
+                          LDX  L3 2*SECT+74
+                          STX  L3 STACK
+                          STX  L3 C2
+                          LDX  L3 /B3
+                          STX  L3 /A
+                          LDX  L3 FORTH
+                          STX  L3 STACK+1
+                          LDX  L3 ACCEP
+                          STX  L3 A-2
+                          LDX  L3 BCD+63
+                          STX  L3 A-1
+                          LDX  L3 SAVE0
+                          STX  L3 A-4 
+                          LDX  L3 /19FF
+                          STX  L3 IC
+                          LDX  L3 /0268   ORIGINALLY /10EE CHANGED CVC
+                          STX  L3 SECT
+                          BSI     RECUR
+                          LINK    BALO
+                    FORTH MDX   2 -1
+                          LD    2 1
+                          STO   1 -3   C
+                    FO1   BSI  L  NEXT
+                          BSI  L  DO
+                          BSI  I3 2
+                          B       FO1
+                    RECUR DC
+                          LD      RECUR
+                          STO  I  R
+                          MDM  L  R,1
+                          MDX   2 -1
+                          B    I2 1
+                    RETUR DC   
+                          MDM  L  R,-1
+                          LDX  I3 R
+                          B    I3 0
+                    INC   DC         INCREMENT COUNTER
+                          LD   I2
+                          A    L  ONE
+                          STO  I2
+                          STO   2
+                          B    I  INC
+                    INTER DC      *
+                          DC         INTERPRET
+                          LD   L  E
+                          STO  I  R
+                          STX  L3 E
+                          MDM  L  R,1
+                          LD    1 -3   C
+                          STO  I  R
+                          MDM  L  R,1
+                          LD    3 3
+                          STO   1 -3   C
+                          LD    1 -2   ACCEPT
+                          STO  I  R
+                          MDM  L  R,1
+                          LD      ARETR
+                          STO   1 -2   ACCEP
+                          B    I  INTER+1
+                    ARETR DC      RETRY
+                    COM   DC         END INTERRUPT
+                          MDM  L  R,-3
+                          LDX  I3 R
+                          LD    3 1
+                          STO   1 -3   C
+                          LD    3 2
+                          STO   1 -2   ACCEPT
+                          LD    3
+                          S    L  E
+                          BNP  I  COM
+                          LD    3 0
+                          STO  L  E
+                          B    I  COM
+                    LOC   DC         LOCATION OF CODE
+                          BSI  L  NEXT
+                          BSI  L  DO
+                          LD    3 2
+                          MDX   2 1
+                          STO   2
+                          B    I  LOC
+                    OR    DC         OR TOP OF STACK
+                          LD    2
+                          MDX   2 -1
+                          OR    2
+                          STO   2
+                          B    I  OR
+                    STORE DC         STORE TO T.O.S.
+                          LD    2 -1
+                          STO  I2
+                          MDX   2 -2
+                          B    I  STORE
+                    SD    DC         STACK TO DEPOSIT
+                          LD    2
+                          MDM  L  IC,1
+                          STO  I  IC
+                          MDX   2 -1
+                          B    I  SD
+                    ADDR  DC      *
+                          DC         PLACE ADDRESS ON STACK
+                          MDX   2 1
+                          STX  L3 TEMP
+                          MDM  L  TEMP,3
+                          LD   L  TEMP
+                          STO   2
+                          B    I  ADDR+1
+                    LITER DC      *
+                          DC         PLACE VALUE ON STACK
+                          MDX   2 1
+                          LD    3 3
+                          STO   2
+                          B    I  LITER+1
+                    OPER  DC         OPERATION
+                          BSI  L  ENTRY
+                          MDM  L  IC,1
+                          LD   L  IC
+                          MDX   2 1
+                          STO   2
+                          STO   3 2
+                          B    I  OPER
+                    CONS  DC         CONSTANT
+                          BSI  L  NEXT
+                          BSI  L  ENTRY
+                          LD      LITER
+                          STO   3 2
+                          LD    2
+                          STO   3 3
+                          MDX   2 -1
+                          B    I  CONS
+                    INTEG DC         DECLARE INTEGER
+                          LDX  I3 E
+                          LD      ADDR
+                          STO   3 2
+                          BSI     ADDR+1
+                          B    I  INTEG
+                    E1    DC         TOP OR SYMBOL TABLE
+                    E     DC         THE PLACE TO START SEARCHES
+                    W1    DC      2*WORD   -6     
+                          DC         D   -5   SAVE CHARACTER
+                          DC         -4   SAVE OPERATION
+                          DC         C   -3   CURRENT CHARACTER
+                          DC         -2   ACCEPT
+                          DC         -1   CHARACTER TABLE
+                    A     DC         A   XR1   CURRENT CHARACTER
+                    N     DC         1
+                          DC         W   2   WORD CHARACTER
+                    WORD  BSS     20   3
+                    STACK BSS     16
+                    R     DC         
+                    INTST BSS     32
+                    C1    DC      2*SECT+642+72   RESET CHARACTER
+                    C2    DC         CHARACTER BEYOND RECORD
+                    C3    DC      2*SECT+74   VHARACTER BEYOND SECTOR
+                    ERROR DC      0
+                          B    I  ERROR
+                    RECOR DC      0   NEXT REcORD
+                          LD    1 -3   C
+                          S       C3
+                          BSI  L  BLOCK,+-   NEXT BLOCK
+                          LD    1 -3   C
+                          S       D152
+                          STO   1 -3
+                          MDM  L  C2,-80
+                          BSI     FIXUP
+                          B    I  RECOR
+                    D152  DC      152
+                    BLOCK DC      0   NEXT BLOCK
+                          LDX  I3 X3
+                          LIBF    DISK1
+                          DC      /1000
+                          DC      BUF
+                          DC      ERROR
+                    BL1   LIBF    DISK1
+                          DC      /0000
+                          DC      BUF
+                          B       BL1
+                          MDM  L  SECT,1
+                          LD   L  C1
+                          STO   1 -3   C
+                          STO  L  C2
+                          B    I  BLOCK
+                    FIXUP DC         RE-ARRANGE RECORD
+                          LD    1 -3   C
+                          SRA     1
+                          STO  L  FX1
+                          STO  L  FX2
+                          MDM  L  FX2,39
+                          LDX   3 20
+                    FI1   LD   I  FX1
+                          STO  L  TEMP
+                          LD   I  FX2
+                          STO  I  FX1
+                          LD   L  TEMP
+                          STO  I  FX2
+                          MDM  L  FX1,1
+                          MDM  L  FX2,-1
+                          MDX   3 -1
+                          B       FI1
+                          B    I  FIXUP
+                    FX1   DC
+                    FX2   DC
+                    PUT   DC         OUTPUT CHARACTER
+                          LD    1    A
+                          STO     AP
+                          LDX  I3 AP
+                          LD   L3 BCD
+                          STO   1    A
+                          LD   L  DP
+                          BSI  L  DEPOS
+                          MDM  L  DP,1
+                          LD      DP
+                          S       DP1
+                          BSI  L  PRINT,+-
+                          LD      AP
+                          STO   1    A
+                          B    I  PUT
+                    PRINT DC      0   PRINT RECORD
+                          LD   L  BCDBL
+                          STO   1    A
+                    PR2   LD      DP
+                          S       DP1
+                          BZ      PR3
+                          LD   L  DP
+                          BSI  L  DEPOS
+                          MDM  L  DP,1
+                          B       PR2
+                    PR3   LDX  I3 X3
+                          LIBF    PRNT1
+                          DC      /2000
+                          DC      PRN
+                          DC      ERROR
+                    PR1   LIBF    PRNT1
+                          DC      /0000
+                          B       PR1
+                          LD      DP0
+                          STO     DP
+                          B    I  PRINT
+                    AP    DC
+                    DP0   DC      2*PRN+2
+                    DP    DC      2*PRN+2
+                    DP1   DC      2*PRN+74
+                    PRN   DC      36
+                          BSS     36
+                    BCD   DC      240   0
+                          DC      241   1
+                          DC      242   2
+                          DC      243   3
+                          DC      244   4
+                          DC      245   5
+                          DC      246   6
+                          DC      247   7
+                          DC      248   8
+                          DC      249   9
+                          DC      193   A
+                          DC      194   B
+                          DC      195   C
+                          DC      196   D
+                          DC      197   E
+                          DC      198   F
+                          DC      199   G
+                          DC      200   H
+                          DC      201   I   /12
+                          DC      209   J
+                          DC      210   K
+                          DC      211   L
+                          DC      212   M
+                          DC      213   N
+                          DC      214   O   /18
+                          DC      215   P
+                          DC      216   Q
+                          DC      217   R
+                          DC      226   S   /1C
+                          DC      227   T
+                          DC      228   U
+                          DC      229   V
+                          DC      230   W
+                          DC      231   X
+                          DC      232   Y
+                          DC      233   Z
+                          DC      64   BLANK   /24
+                          DC      74   CENTS
+                          DC      123   NUMBER
+                          DC      76   LESS THAN
+                          DC      77   (
+                          DC      78   +
+                          DC      79   STROKE
+                          DC      80   AMPERSAND   /2B
+                          DC      90   EXCLAME
+                          DC      91   $
+                          DC      92   *
+                          DC      93   )
+                          DC      94   SEMI COLON
+                          DC      95   NOT
+                          DC      96   -
+                          DC      97   /
+                          DC      107   ,
+                          DC      108   PERCENT
+                          DC      109   UNDERSCORE
+                          DC      110   GREATER THAN
+                          DC      111   QUESTION
+                          DC      122   COLON
+                          DC      75   .
+                          DC      124   AT
+                          DC      125   '
+                          DC      126   =
+                          DC      127   QUOTE
+                    BCDBL DC      64   BL
+                    BUF   DC      320   SECTOR BUFFER
+                    SECT  DC
+                          BSS     320
+                          DC
+                          DC
+                          DC      UNDEF
+                          DC
+                          DC      /0F18    FORTH
+                          DC      /1B1D
+                          DC      FORTH
+                          DC
+                          DC      /1B0E    RECURSE
+                          DC      /0C1E
+                          DC      LITER+1
+                          DC      R
+                          DC      /0F12    FIND
+                          DC      /170D
+                          DC      DO
+                          DC
+                          DC      /0A0D    ADDRESS
+                          DC      /0D1B
+                          DC      ADDR+1
+                          DC
+                          DC      /0E17    END
+                          DC      /0D24
+                          DC      COM
+                          DC
+                          DC      /110E    HEX
+                          DC      /2124
+                          DC      HEX
+                          DC
+                          DC      /181B    OR
+                          DC      /2424
+                          DC      OR
+                          DC
+                          DC      /3D24    =
+                          DC      /2424
+                          DC      STORE
+                          DC
+                          DC      /3924    COLON
+                          DC      /2424
+                          DC      ENTER
+                          DC
+                          DC      /3A24    .
+                          DC      /2424
+                          DC      ENTER
+                          DC
+                          DC      /3024    SEMI COLON
+                          DC      /2424
+                          DC      COM
+                          DC
+                          DC      /3424    ,
+                          DC      /2424
+                          DC      COM
+                          DC
+                          DC      /120C    IC
+                          DC      /2424
+                          DC      ADDR+1
+                    IC    DC
+                          DC      /2524    CENT
+                          DC      /2424
+                          DC      OPER
+                          DC
+                          DC      /1819    OPERATION
+                          DC      /0E1B
+                          DC      OPER
+                          DC
+                          DC      /0E17    ENTRY
+                          DC      /1D1B
+                          DC      ENTRY
+                          DC
+                          DC      /1217    INTEGER
+                          DC      /1D0E
+                          DC      INTEG
+                          DC
+                          DC      /1217    INC
+                          DC      /0C24
+                          DC      INC
+                          DC
+                          DC      /1C0D    SD
+                          DC      /2424
+                          DC      SD
+                          DC
+                          DC      /0C18    CONVERT
+                          DC      /171F
+                          DC      CONVE
+                          DC
+                          DC      /0F0E    FETCH
+                          DC      /1D0C
+                          DC      FETCH
+                          DC
+                          DC      /0D0E    DEPOSIT
+                          DC      /1918
+                          DC      DEPOS
+                          DC
+                          DC      /191E    PUT
+                          DC      /1D24
+                          DC      PUT
+                          DC
+                          DC      /191B    PRINT
+                          DC      /1217
+                          DC      PRINT
+                          DC
+                          DC      /170E    NEXT
+                          DC      /211D
+                          DC      NEXT
+                          DC
+                          DC      /1518    LOC
+                          DC      /0C24
+                          DC      LOC
+                          DC
+                          DC      /0E24    E
+                          DC      /2424
+                          DC      LITER+1
+                          DC      E
+                          DC      /1512    LIT
+                          DC      /1D24
+                          DC      LITER+1
+                          DC
+                    E2    DC      /0E01    E1
+                          DC      /2424
+                          DC      LITER+1
+                          DC      E1
+                          END     START-1
+// DUP    
+*DELETE             FORTX
+*STORE  1   WS  UA  FORTX                                                                  
+// JOB
+*DELETE             FORTX

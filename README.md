@@ -6,7 +6,7 @@ This implementation consists of 2 parts, a 645 line file written in IBM 1130 ass
 
 These listings came to light sometime around 2011, and in March 2018 attracted the interest of Carl Claunch, an IBM 1130 restoration enthusiast. Most of the detective work concerning the operation of this Forth has been performed and documented by Carl Claunch.
 
-Please see FORTH-68_notes.txt and 
+Please see FORTH-68_notes.txt and "notes on FORTH assem code.pdf" for Carl's invaluable doccumentation.
 
 
 Part of the difficulty in understanding the listings, was the use of the IBM proprietary EBCDIC (Extended Binary Coded Decimal Interchange Code) on the IBM 1130. Charles Moore created his own character coding to make the use of hexadecimal numbers easier and to facilitate alphabetical dictionary searches. Neither of these character coding schemes are compatible with ascii.

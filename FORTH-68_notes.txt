@@ -1,0 +1,981 @@
+Notes on the IBM 1130 Forth assembler and text files - Carl Claunch, March 2018
+
+
+--------------------------------------------------------------------------------
+These are the primitives in the assembler program
+--------------------------------------------------------------------------------
+
+Primitives used by FORTH code
+
+E - will put the next location in dictionary variable section (+4 from E1) on stack
+
+E1 - will put the highest valid entry in dictionary variable section onto the stack
+
+IC - will push the current instruction counter (of forth instructions) onto stack
+
+LIT - will put the literal value onto the stack
+
+OR - will OR together the top two values on stack and replace with single result
+
+LOC - will fetch next name in stream and look it up in the dictionary
+      pushing the execution address of that item onto the stack 
+ this is the ’ verb to look up a word in the dictionary 
+
+NEXT - will find next word, interpret it and execute
+
+INC - will bump up the value of a variable by 1 - variable address on top of stack
+      and will also place that value on the stack in place of variable address
+
+HEX - sets space on variable part of dictionary for a hex variable
+
+; or , or END - finishes a definition and switches back to execute mode
+: or . - switches into definition mode, storing the remaining text up to 
+ the ; in the variable entry for this word, and causing it to be 
+ interpreted whenever it is used
+
+¢ or OPERATION - generates 1130 machine language as a callable routine
+ to be executed when this word is used
+ more modern versions used CODE instead
+
+ENTRY - makes a dictionary entry - grabbing the next word from the input stream
+ and establishing an entry in the fixed part of the dictionary
+
+INTEGER - sets space on variable part of dictionary for an integer variable, 
+ putting the variable name in the fixed dictionary and when it is used
+ the code executed will put its address from variable part onto the stack
+
+CONVERT - switches packed EBCDIC words to packed FORTH code words
+ uses a 64 word table that is organized by FORTH code values
+ and the entries in that table are EBCDIC codes
+
+DEPOSIT - put next char in work area - OVERRIDDEN BY FORTH DISK FILE
+ so that DEPOSIT
+
+FETCH - get next character from startup disk buffer, typewriter buffer or 
+ the user disk buffer
+
+
+primitives not found in the bootup FORTH code
+
+FIND - look up an entry in the dictionary 
+
+RECURSE - Push down return address and start execution
+
+FORT - will start basic FORTH loop getting words, interpreting and executing
+
+PUT - will put a character from stack into print line
+
+PRINT - will print the current print line
+
+ADDRESS - store an address (e.g. to a variable or code pointer (IC)
+ this is called by E, E1 and IC which are called by FORTH code
+SD - Replaces top of stack value with the current code pointer (IC)
+
+--------------------------------------------------------------------------------
+Important synonyms used for more widely recognized forth characters
+--------------------------------------------------------------------------------
+
+The actual file written by Chuck Moore used:
+ . as a synonym for :
+ , as a synonym for ;
+OPERATION as a synonym for ¢(cent-sign) or CODE
+
+"In charts below, 	(a b -- c) is change in stack,    var: is addition to variable dictionary entry"
+        gen: is what it will generate when compiled
+
+
+--------------------------------------------------------------------------------
+THE SECTION BELOW COVERS METHOD OF STORING INSTRUCTIONS AND MANAGING THE FORTH PROGRAM COUNTER (IC)
+--------------------------------------------------------------------------------
+:DEP  LOC DEPOSIT;          ( -- execaddr(DEPOSIT)) var: ()   same as ’ DEPOSIT in modern FORTH
+     find the execution address of DEPOSIT (builtin) and put on stack
+
+:DEPOSIT  IC INC=;          (n -- )  gen: (n)    and bumps IC by 1
+     pick up the pseudo instruction counter IC address and put on stack
+        bump the contents of that address by one 
+        save the top word on the stack into the variable dictionary
+     this stores instructions to variable dictionary and advances IC
+
+:INST OR DEPOSIT;           (n m -- ) gen: (n OR m)
+     OR the two words on the stack (to form an instruction) and DEPOSIT
+
+THE SECTION BELOW COVERS GENERATION OF VALID 1130 INSTRUCTIONS FOR COMPILED CODE
+--------------------------------------------------------------------------------
+:LD C000;                  ( -- C000) gen: ()
+     C000 is basis of 1130 Load Accumulator instruction
+
+:ST D000;                   ( -- D000) gen: ()
+     D000 is basis of 1130 Store Accumulator inst
+
+:ADD 8000;                  ( -- 8000) gen: ()
+     8000 is basis of 1130 Add to Accumulator inst
+
+:SUB 9000;                  ( -- 9000) gen: ()
+     9000 is basis of 1130 Subtract from Accumulator inst
+
+:MUL A000;                  ( -- A000) gen: ()
+     A000 is basis of 1130 Multiply Accumulator inst
+
+:DIV A800;                  ( -- A800) gen: ()
+     A800 is basis of 1130 Divide, into Accumulator+Extension inst
+
+:LX 6000;                   ( -- 6000) gen: ()
+     6000 is basis of 1130 Load index register inst
+
+:SX 6800;                   ( -- 6800) gen: ()
+     6800 is basis of 1130 Store index reg inst
+
+:MX 7000;                   ( -- 7000) gen: ()
+     7000 with an IX specified is basis of 1130 Modify index reg inst
+
+:B 7000;                    ( -- 7000) gen: ()
+     7000 with 0 IX specifiedis an 1130 short Branch inst
+
+:BL 4800;                   ( -- 4800) gen: ()
+     4800 is basis of 1130 Branch long inst
+
+:BSI 4000;                  ( -- 7=4000) gen: ()
+     4000 is basis of 1130 Branch and Store IAR (branch to subroutine) inst
+
+:XIO 800;                   ( -- 0800) gen: ()
+     0800 is basis 1130 XIO (execute I/O) inst
+
+:X1 1000 OR;                (n1 -- n1 OR 1000) gen: ()
+     OR by 1000 adds value 01 to the index register field bits 6 and 7  
+     thus it means IX1 is part of address computation of the instruction
+
+:X2 200 OR;                 (n1 -- n1 OR 2000) gen: ()
+     OR by 2000 adds value 10 to the index register field bits 6 and 7  IX2
+
+:X3 300 OR;                 (n1 -- n1 OR 3000) gen: ()
+     OR by 3000 adds value 11 to the index register field bits 6 and 7  IX3
+
+:MDM 7400 INST DEPOSIT;     (n1 n2 -- )   gen: (7400 OR n2, n1)
+     7400 is the basis for a modify memory (long MDX with no register) 
+     Add/sub the displacement to a memory location. Entered with address
+     of the memory location on stack, pushes MDM to variable then address
+
+:ZERO 1810 DEPOSIT;         ( -- )     gen: (1810)
+     1810 is an 1130 shift right arithmetic 16 bits (clears word)
+
+:XCH 18D0 DEPOSIT;          ( -- )     gen: (18D0)
+     18D0 is an 1130 rotate acc and ext 16 bits (exchange ACC and EXT contents)
+
+:I 480 INST DEPOSIT;        (n1 n2 -- )  gen: (n2 OR 0480, n1)
+     0480 added to 1130 instruction sets long field (bit 5) and 
+     indirect address flag (bit 8), saves top of stack as address
+     after saving indirect instruction.
+
+:L 400 INST;                (n1 -- )   gen: (n1 OR 0400)
+     0400 added to 1130 instruction sets long field (bit 5) to indicate 
+     32 bit instruction
+
+:LONG L DEPOSIT;            (n1 n2 -- )  gen: (n2 OR 0400, n1)
+     make an instruction long and stick in variable dictionary entry
+     then stick top of stack (an address) in variable entry
+
+:STORE ST LONG;             (n1 -- )    gen: (D400, n1)
+     sticks a Store Accumulator long instruction in variable dictionary entry
+     plus address is top of stack goes to variable entry
+
+:LOAD LD LONG;              (n1 -- )   gen: (C400, n1)
+     sticks a Load Accumulator long instruction in variable dictionary entry
+     plus address is top of stack goes to variable entry
+
+:CALL BSI LONG;             (n1 -- )   gen: (4400, n1)
+     sticks a  BSI long instruction in variable dictionary entry
+     plus address in top of stack goes to variable entry
+
+:ACC 1 B INST  DEPOSIT  FE INST;    (n1 n2 -- )  gen: (7001, n2, instruction OR n1)
+     1130 branch over next word put in variable dictionary entry, 
+     deposit first stack value as a constant into variable dictionary entry, 
+     then take stack-1 word as the beginning of an instruction, 
+     OR it with pattern 00FE to make it a short inst referencing 
+     our stored constant and deposit both into the dictionary entry
+     Essentially puts a constant inline for use with an instruction on stack
+
+:GDEP IC 1 MDM  IC ST I;    ( -- )   gen: (7401, IC, D480, IC)    bumps IC and stores ACC to new loc
+     update IC (variable directory pointer) to next cell, 
+     create inst to bump the contents of that pointer by 1, 
+     then deposits the current accumulator content into new location
+
+
+:GOR  E800;                 ( -- E800)  gen: ()
+     1130 logical OR
+
+:GAND E000;                 ( -- E000)  gen: ()
+     1130 logical AND
+
+:GWAIT 3000 DEPOSIT;        ( -- )  gen: (3000)
+     1130 Wait (halt) instruction
+
+:REL X3 LONG;               (n1 n2 -- )  gen: (n2 OR 0700, n1)
+     make instruction on stack long and using IX3
+
+:RELS X3 INST;              (n -- )  gen: (n OR 0300)
+     make instruction short and using IX3
+
+:BASE  LX REL;              (n -- )  gen: (6700, n)
+     Load IX register 3 (long instruction) with next word
+
+:BASA  1 ST INST  0 BASE;   ( -- )  gen: (D001, 6700, hole)
+     Store accumulator in next word of variable dictionary, 
+     deposit instruction to load IX 3 from that address
+
+:TOD 1880 INST;             ( -- )  gen: (1880)
+     shift right acc and ext arithmetic (sign bit stays untouched)
+
+:TOM 1000 INST;             ( -- )  gen: (1000)
+     shift left accumulator instruction
+
+:TXD 1880 INST;     ( -- )  gen: (1880)
+     shift right ACC and EXT arithmetically (sign stays untouched)
+     presumably these will use IX for shift count (be ORed with IX code)
+
+:TXM 1080 INST;             ( -- )  gen: (1080)
+     shift left accum + extension instruction
+
+:TAD 1800 INST;             ( -- )  gen: (1800)
+     Shift right accumulator logical (sign bit moves too)
+
+:ZF  10A0 DEPOSIT;          ( -- )  gen: (10A0)
+     shift left ACC plus EXT 32 (zero out)
+
+:LF  ZF LOAD:               ( -- )   gen: (10A0, C400, IC)
+     zero out ACC and EXT, 
+     load current position in variable dictionary (IC)
+
+:FS  X2 INST;               (n -- )   gen: (n OR 0200)
+     Stores an instruction modified to use Index Register 2 (stack pointer)
+
+:LS  LD FS;                 (n -- )    gen: (C200 OR n)
+     Load Stack - does a Load instruction w/ IX2
+
+:SS ST FS;                  (n -- )    gen: (D200 OR n)
+     Store stack - stores accumulator in stack (using IX2)
+
+:LSI LD X2 I;               (n -- )    gen: (C680, n)
+     Load indirect pointed to by stack (e.g. get value of address on stack)
+
+:SSI ST X2 I;               (n -- )    gen: (D680, n)
+     Store indirect pointed to by stack
+
+:MS  MX FS;                 (n -- )  gen: (6200 OR n)
+     Modify the IX2 (stack pointer), should be ORed with displacement from stack
+
+:RETURN BL I;               (n -- )  gen: (4C80, n)
+     1130 return from subroutine (Branch Long Indirect)
+
+
+----------------------------------------------------
+THE SECTION BELOW CREATES MAJOR FORTH OPERATORS in 1130 code
+----------------------------------------------------
+¢ CONSTANT E1 LX X3 I LD LOC LIT ACC
+   2 ST X3 INST 0 LS 3 ST X3 INST  RETURN  (n -- )   var: ( 6780, E1, 7001, 
+           execaddr(LITER), C0FE, D302, 
+           C203, D303, 4C80, return)
+        Load IX3 Indirect with address of last used entry in fixed dictionary (E1)
+   Look up execution address of LIT and load accumulator
+   store this in word 2 of fixed dictionary entry
+   load cell at top of stack (value of constant to save) == n
+   store this in word 3 of fixed dictionary entry
+   This will define a name and at execution stick the constant n on the stack
+
+¢ REVERT  E LOAD E1 STORE  E1 FC MDM RETURN ( -- )   var: (C400, E, D400 E1, 74FC, E1, 4C80, return)
+   load address of next free entry into accumulator, 
+   store it as the last used address E1, 
+   decrement last used entry address by 4
+   regenerates the last used entry properly based on next free address
+
+¢ TOP E1 LOAD E STORE E 4 MDM RETURN  ( -- )  var: (C400, E1, D400, E, 7404, E, 4C80, return)
+   load last used entry into accumulator
+   store it as the next free space
+   bump up next free space by one entry
+        regenerates the next free entry properly based on last used address
+
+¢ DUP 0 LS  1 MS  0 SS RETURN  (n1 -- n1 n1)  var: (C200, 7201, D200, 4C80, return)
+        duplicate the value at top of stack. load top stack word to acc
+   bump stack pointer up by 1 and 
+   store the acc into stack
+
+¢ VALUE 0 LSI 0 SS RETURN  (n -- contents(n))  var: (C680, n, D200, 4C80, return)
+        load value pointed to by addr at top of stack using Load Indirect 
+   store in stack replacing address
+
+¢ DROP FF MS RETURN   (n -- )  var: (72FF, 4C80, return)
+        drop top item from stack by decrementing stack pointer by 1
+
+¢ RAISE 1 MS RETURN   ( -- x)  var: (7201, 4C80, return)
+        bump stack pointer by 1 to leave a hole and return to caller
+
+¢ SWAP 0 LS XCH FF LS 0 SS XCH FF SS RETURN (n1 n2 -- n2 n1)  var: (C200, 18D0, C2FF, 
+             D200, 18D0, D2FF, 4C80, return)
+        swap top two words in stack. load top of stack to accumulator
+   rotate it to extension, load stack-1 to acc, store to stack,
+   rotate ext back to acc, store to stack - 1
+
+:MSI LD SWAP ACC DUP ADD FS SS; (n1 n2 -- stack+n1 + n2)  gen: (7001, n2, C0FE, 82n1, D2n1)
+   Entered with two values on the stack (A and B) 
+        Load instuction, swapped to stack-1,
+   A value saved inline and used with LD instruction. 
+   adds stack + B to the accumulator
+   stores result at stack + B (updates that position)
+
+¢ + 0 LS FF MS 0 ADD FS 0 SS RETURN        (n1 n2 -- n1+n2)  var: (C200, 72FF, 8200, 
+                  D200, 4C80, return)
+   load top of stack, decrement stack pointer, add new top of stack
+   store result in new top of stack
+        add top two words and leave result at top of stack
+
+¢ AND 0 LS FF MS 0 E000 FS 0 SS RETURN  (n1 n2 -- n1 AND n2) var: (C200, 72FF, E200, 
+               D200, 4C80, return)
+        and top two words and leave result at top of stack
+
+:DISP FF AND;      (n -- low 8 bits of n) gen: (E0FF)
+        Disp will AND off top half of cell on stack to get displacement of short instruction
+
+¢ - FF MS 0 LS 1 SUB FS 0 SS RETURN   (n1 n2 -- n2-n1)   var: (72FF, C200, 9201, 
+              D200, 4C80, return)
+   subtract top two words and leave result at top of stack
+
+¢ MINUS ZERO 0 SUB FS 0 SS RETURN     (n -- -n)  var: (1810, 9200, D200, 4C80, return)
+   zero out accumulator, subtract top of stack and store result
+
+¢ / FF LS 1890 DEPOSIT 0 DIV FS FF SS XCH 0 SS RETURN (n1 n2 -- n2/n1)  var: (C2FF, 1890, A800, 
+               D2FF, 18D0, D200, 4C80, return)
+   divide top two words and leave result at top of stack
+
+¢ * FF LS 0 MUL FS XCH FF MS 0 SS RETURN    (n1 n2 -- n1*n2)  var: (C2FF, A000, 1890, 72FF, 
+              D200, 4C80, return)
+   multiply top two words and leave result at top of stack
+
+¢ PUSH 0 LSI ADD 1 ACC 0 SSI 0 SS FF LS 0 SSI
+    FE MS RETURN     (n1 n2 -- ) var: (C680, 0000, 7001, 0001, 
+               80FE, D680, 0000, D200, C2FF, 
+               D680, 0000, 72FE, 4C80, return)
+   load value from address at top of stack (n2) to accumulator
+   e.g. n2 is a pointer to head of user stack
+   add 1 to the value in accumulator (advanced stack pointer)
+   store result in location whose address is top of stack
+   store also in stack+0 replacing original value of n2
+   load stack - 1 (n1)
+   store into location whose address is on stack one past original n2
+   remove two items from stack 
+   top of stack is n2, a pointer to the user stack
+   this bumps user pointer and stores n1 into the new location
+
+¢ PULL 0 LSI 1 SS SUB 1 ACC 0 SSI 1 LSI 0 SS RETURN (n -- contents(n-1), contents(n)) 
+            var: (C680, 0000, D201, 
+             7001, 0001, 90FE, 
+             D680, 0000, C680, 
+             0001, D200, 4C80, return)
+   loads value in address n2 from stack (stack pointer)
+   stores in stack + 1 (beyond top of stack)
+   subtract 1 from accumulator (lowers user stack pointer value)
+   store new stack pointer value in address n2
+   pick up next value from user stack +1
+    store in top of stack
+   this grabs n1 from stack, lowers pointer by 1
+   has side effect of old value in stack+1
+
+:STACK 1 MS LOAD 0 SS;    (n1 -- n1 n1) gen: (7201, C400, n, D200)
+   bump stack pointer, load original top of stack and store in new position
+   this is same as a DUP but not a callable routine, instead inline
+
+:LITS LD SWAP ACC 1 MS 0 SS;   (n1 -- n1 contents(n1)) gen: (7001, n, C0FE, 7201, D200 )
+   load address n1 into accumulator, 
+   set up load instruction C000
+   swap so stack is address n1 then c000
+   stick address n as constant and load the contents (7001 n C0FE)
+   bump top of stack
+   store value of address n1 into new top of stack
+   like VALUE but not callable, inline instead
+¢ VECTOR 0 LS GDEP IC STACK LOC CONSTANT CALL
+   FF ADD FS IC STORE FE MS RETURN   (n -- )  var: (C200, 7401, IC, D480, IC,
+    make space for the number of entries  7201, C400, IC, D200,
+    load top of stack to accumulator    4400, CONSTANT, 82FF,
+    bump up IC by one and save n on stack D400, IC, 72FE, 4C80, return)
+    find execution address of CONSTANT
+    call CONSTANT to convert addr to value
+    add n to IC and store into IC, pull 2 from stack
+    When executed, it pushes the current IC onto variable
+    dictionary entry then reserves n cells by bumping IC
+
+:XS 4 VECTOR;   ( -- )  gen: ()
+    define XS as a four deep vector.
+
+XS XS XS=   ( -- )  var (address of XS, 0000, 0000, 0000, 0000)
+     create one XS vector
+
+:TRANSIENT IC INC XS PUSH;   ( -- )  gen: ()
+    get address of current variable entry, bump by 1,
+    push this value into the XS stack
+    this sets up temp code into XS stack to be executed
+
+¢ EXECUTE LD BL 480 OR ACC GDEP XS LD I GDEP ( -- )  var: (7001, 4C80, C0FE, 7401, 0D83,
+   XS LX X3 I 0 BSI X3 I XS LITS LOC PULL CALL   D480, 0D83, C480, XS, 7401, 0D83,
+   SUB 1 ACC IC STORE FF MS RETURN     D480, 0D83, 6780, XS, 4780, 0000,
+    as this executes, it pushes  7001, XS, C0FE, 7201, D200,
+    4C80 in variable dictionary,  4400, PULL, 7001, 0001, 90FE,
+    loads address of XS vector  D400, IC, 72FF, 4C80, return)
+    stores that in variable dictionary
+    loads IX3 with first word of XS
+    Calls routine pointed to by IX3
+    loads XS to accumlator
+    bump stack and store XS there
+    Calls PULL routine
+    Subtracts 1 from accumulator
+    Store as IC
+    drop top of parameter stack
+    This will execute routine at top of XS stack
+    then pull from XS stack
+
+
+:BACK IC VALUE - DISP B INST;  (n -- )  gen: (B relative IC - n)
+    stick address of IC on stack, replace with contents
+    subtract that from n which is stack-1
+    AND with 00FF to get 8 bit signed integer
+    OR together 7000 (Branch) and displacement, 
+    stick this branch relative on variable dictionary
+
+:MARK IC VALUE SWAP LX X3 INST;  (n -- IC of LX instruction)  gen: (7201, 63nn)
+    push IC address on stack, replace with contents
+    swap n and IC contents  - stack now IC, n
+    builds LX 6000, IX3, and n
+    push that 63nn instruction to variable dictionary
+    This updates IC to point to next free location
+    and loads IX3 with a count (n)
+
+:LOOP FF MX X3 INST BACK;  ( -- )  gen: (73FF, B relative to marked instruction)
+    modify IX3 as loop counter
+    branch back unless it becomes
+    zero or neg, then skip branch
+    and branch back to last IC address
+
+:START 2 B INST DEPOSIT IC INC (n -- )  gen: (7201, 7002, n, C0FE, C0FD, D0FD)
+   FD LD INST FD ST INST;   ????
+    Branch over next two cells in variable dictionary
+    save top of stack in variable dictionary as one word
+    second word is empty
+    increment IC value, Load first word in accumulator
+    Store into second word of the entry
+
+:STOP DUP FF MDM 1+ BACK;  (n -- )  gen: (74FF, n, 70back to ) 
+    duplicate top of stack, decrement that address,
+    add 1 to the duplicated value and branch back
+
+
+:CONDITION 0 LS FF MS BSI OR L LOC NEXT DEPOSIT RETURN;  (n1 n2 -- )  gen: (7201, C200, 72FF, 
+             44nn, NEXT, 4C80, return)
+    builds up and executes a branch conditional, which will call NEXT
+    to fetch another word if condition is matched
+
+¢ NONZERO 18 CONDITION   (n -- )  var: (7201, C200, 72FF, 4418, NEXT, 4C80, return)
+    branch conditional flags for nonzero test
+
+¢ FALSE 20 CONDITION   (n -- )  var: (7201, C200, 72FF, 4420, NEXT, 4C80, return)
+    branch conditional flags for notequal test
+
+¢ EVEN 04 CONDITION   (n -- )  var: (7201, C200, 72FF, 4404, NEXT, 4C80, return)
+    branch conditional flags for even test
+
+:IF BL 400 OR INST IC INC;     (n -- )  gen: (4Cnn, IC+1)
+    uses top of stack as condition for branch conditional long, 
+    branch is to next logic instruction on variable dictionary
+
+:THEN IC VALUE 1+ SWAP=;   (n -- )  gen: ()
+    gets value of current IC, bumps by 1, swaps with TOS n
+    and stores that word in new IC location 
+
+:ELSE IC VALUE 3+ SWAP= 0 IF;   (n -- )  gen: ()
+    get value of current IC, bump by 3, swap and store n there
+    set condition of 0 in stack and implement IF
+
+:POSITIVE 8;       ( -- 9)  gen: ()
+
+:NEGATIVE 10;      ( -- 10)   gen: ()
+
+:EQUAL 20;       ( -- 20)   gen: ()
+
+:NOT 18;      ( -- 18)   var: ()
+
+:PROGRAM 1 B INST 0 DEPOSIT;    ( -- )  var: (7001, 0)
+ Stick in a branch over next word
+
+
+¢ QUEUE 1- PROGRAM GWAIT BACK    ( -- )  var: (0000, 7001, 0929, 3000, 70FC)
+ branch over saved word unless this op code is altered
+ issue 1130 WAIT instruction
+ loop back to wait again
+ caller ENQUEUE will update the word 0000 to be an address and word 1 as an instruction
+ I suspect that the 0929 was pushed in by a caller to ENQUEUE
+ 
+:ENQUEUE LOAD LOC QUEUE 2+ STORE  (n -- )   var: (C400, n, D400, queue+2, 7001, 7001, C0FE, 
+   LD 1 B OR ACC LOC QUEUE 1+ STORE LOC QUEUE 1+ BL LONG;  D400, queue+1, 4C00, queue+1, 4C80, return )
+   picks up address n from stack and loads its contents
+   store content of address in QUEUE word 2
+   load 7001 (B 1 instruction)
+   store in QUEUE word 1
+   Branch to QUEUE, then return
+
+:REACTIVATE LD BL 400 OR ACC LOC QUEUE 1+ STORE;  ( -- )  var: (7001, 4C00, C0FE, D400, queue+1)
+   will plug a branch long into word 1 of queue, causing a branch to 
+   the address that was previously stored in word 2 of queue by ENQUEUE
+
+:BNZ BL 20 OR;     ( -- 4820)  var: ()
+   sets up the first word of a branch long instruction with condition 20
+
+:BUFFER DUP DUP DUP DUP VALUE 2/ DROP+ 2+ (n -- )  var: ()
+   SWAP 1+= 2+ SWAP=;
+   is passed an address of a buffer which has a length in n - characters, 2X words
+   This will get the address from the first word and fetch its value
+   divide length by 2 to get words, then add 2 to form the address of tne next line
+   That address of the next line is stored in n+1 location then n is 
+   updated to point to n+2 (skipping over the pointer to next line)
+   this would be used to manage lines in a disk buffer
+   
+¢ EXCHANGE 0 LS ADD 1 ACC 1 SS 0 LSI    (n -- )  var: (0000, C200, 7001, 0001, 80FE, D200, 
+   XCH 1 LSI 0 SSI XCH 1 SSI FF MS RETURN      C680, 0000, 18D0, C680, 0001, 
+            D680, 0000, 18D0, D680, 0001, 72FF, 4C80, return)
+   passed in an address on stack, will bump up n by 1 and save it at stack + 1 (temp)
+   then swaps the two values at stack and stack+1
+   finally, drops original value from stack and returns
+   Pass address of two word area and swap the values in those locations. 
+
+
+
+:CLEAR LOAD 4840 I;          (n1 n2 -- )  var: (C400, n2, 4CC0, n1)
+   will produce code on variable dictionary stack to load the value at address n2
+   and BOSC back to n1 (BOSC resets any pending interrupts)
+
+:NOP B DEPOSIT;     ( -- )  var: (7000)
+   produces a NOP on the variable dictionary stack
+
+
+:ALIGN IC VALUE EVEN NOP;   ( -- )  var: (either 7000 or nothing)
+   fetches IC address then its value (next location in variable dictionary)
+   does an even condition, e.g if the value is even, gobble up next word
+   before it is processed. Thus, if odd, NOP is interpreted
+
+:GXIO ALIGN 1 XIO INST 2 B INST DEPOSIT DEPOSIT; (n1 n2 -- )  var: (align with 7000 if needed, 
+   First aligns to an even (doubleword) address    0801, 7002, n2, n1)
+   the issues XIO pointing at two words on stack 
+   which are the IOCC, then branch over the IOCC
+
+:WTC 1+ 2*;      (n -- 2*(n+1))  var: ()
+   calculates (n+1)*2 and leaves on stack
+   converts word address to pseudo character address (2x real address)
+   used with verbs that access packed character fields
+
+¢ FILL 0 LS FF MS 1 ST INST 0 START LOC NEXT CALL (n -- )  var: (0000, C200, 72FF, D001, 
+   LOC HEX CALL 0 LS GDEP FF MS STOP RETURN       7002, 0040, 0000 (target), 
+              C0FD, D0FD, 4400, next, 
+              4400, hex, C200, 
+              7401, IC, D480, IC, 72FF, 
+              74FF, target, 70F3, 4C80, return)
+   removes n from stack, stores it as starting count
+   loads 0040 (template) but actually n2 and stores it in target variable
+   grabs next word from stream 
+   makes it a hex constant on stack
+   load that constant from stack, bump IC, 
+   stick on variable dictionary, drop from stack, 
+   decrement target and loop until it hits zero then return
+
+:DATA IC VALUE 1+ CONSTANT DROP;  ( -- )  var: () 
+   this is an odd duck. it picks up the address of the next entry
+   of the variable dictionary (value of IC), bumps it, saves that
+   in stack + 1 but does not increment stack thus it is invisible
+
+:CSKB 40 DATA FILL 2000 1000 800 400 200 100 80 40 20 10  ( -- )  gen: (call FILL to set up 64 char table)
+9000 8800 8400 8200 8100 8080 8040 8020 8010 5000 4800 4400 4200 4100
+4080 4040 4020 4010 2800 2400 2200 2100 2080 2040 2020 2010 0000
+8820 0420 8220 8120 80A0 8060 8000 4820 4420 4220 4120 40A0 4060
+4000 3000 2420 2220 2120 20A0 2060 0820 8420 0220 0120 00A0 0060
+0000; 
+
+CSKB       ( -- )  var: (Data area CSKB with these values)
+  This is a table of hollerith code constants, with rows 12, 11, 0 then 1 to 9 
+  left justified in each word. The relative position corresponds to Forth code,
+  for example the letter A is the value x0A in FORTH code, the tenth entry
+  here, 9000, which signifies a 12 and a 1 punch
+
+:CSCP 40 DATA FILL C400 FC00 D800 DC00 F000 F400 D000 D400 E400 E000   ( -- )  gen: (call FILL to set
+3C00 1800 1C00 3000 3400 1000 1400 2400 2000 7C00 5800 5C00 7000      up 64 char table) 
+7400 5000 5400 6400 6000 9800 9C00 B000 B400 9000 9400 A400 A000
+2100 0200 C000 DE00 FE00 DA00 C600 4400 4200 4000 D600 F600 D200
+F200 8400 BC00 8000 0600 BD00 4600 8600 8200 0000 0400 E600 C200
+E200 8600; 
+
+CSCP       ( -- ) gen: (data area CSCP with these values
+  This is a table of Selectric PTTC/8 constants, 8 bits left justified 
+  The relative position corresponds to Forth code,
+  for example the letter A is the value x0A in FORTH code, the tenth entry
+  here, 3C00, causes the typeball to tilt and rotate to type an A
+
+:A 2 VECTOR;      ( -- )  gen: (size cell plus 2 cells)
+
+A       ( -- )  var: (2 word vector stored in variable 
+           dictionary under name A)
+
+:RESTORE A 2+ STORE 0F01 0 GXIO;  ( -- )  gen: (D400, A(2), optional NOP,  0801, 7002, 0000, 0F01)
+  This will store the accumulator contents in the second word of vector A, then 
+  builds code to issue an XIO instruction with IOCC 0000 0F01 which clears status of console
+
+:CONTINUE A 2+ CLEAR;    (n -- )  gen: (C400, A(2), 4CC0, n)
+  This will load word 2 of vector A into the accumulator
+  then will branch indirect (return) to address in n, with the interrupt
+  level clear bit on. This is the normal return from an interrupt handle
+
+¢ READY RESTORE REACTIVATE CONTINUE  (n -- )  var: (D400, A(2), optional NOP, 0801, 
+                 7002, 0000, 0F01, 7001, 4C00, C0FE, 
+            D400, queue+1, C400, A(2), 4CC0, n)
+  saves accumulator in word 2 of vector A, clear the console, 
+  clear out the QUEUE, reload the saved accumulator and BOSC back
+
+:CHA A 1+ STORE 0900 A 1+ GXIO LD LOC READY ACC 0C STORE, ( -- )  gen: (D400, A(1), optional NOP, 
+              0801, 7002, A(1), 0900, 
+                   7001, ready, C0FE, D400, 000C)
+  store accumulator in first word of vector A, 
+  issue XIO to type character in address in A(1) to console printer
+  look up address of READY verb and load it to accumulator 
+  then set it up as interrupt level handler for IL4
+  thus READY is the IL4 interrupt handler during typing
+  this should be called and then pause FORTH with ENQUEUE
+  
+
+¢ CHARACTER RESTORE 0A00 A 1+ GXIO A 1+ LOAD  ( -- )  var: (0000, D400, A(2), 
+   ST X1 DEPOSIT LOC CONVERT CALL CSCP LD REL CHA CONTINUE               optional NOP, 0801, 7002, 0000,                0F01, 0801, 7002, A(1), 0A00,
+              C400, A(1), D100, 4400, conve,
+              C700, CSCP, D400, A(1), 
+              optional NOP, 0801, 7002, 
+              A(1), 0900, 7001, ready, 
+              C0FE, D400, 000C, 
+              C400, A(2), 4CC0, return)  
+  this routine processes each character as it is keyed on console
+  acting as the IL4 interrupt handler after a console read has been issued
+  the system should be waiting with ENQUEUE for this
+
+¢ ACCEPT LD LOC CHARACTER ACC 0C STORE 0C00 0 GXIO ENQUEUE ( -- )  var: (0000, 7001, character, C0FE, 
+              D400, 000C, optional NOP, 0801, 
+              7002, 0000, 0C00, C400, accept, 
+              D400, queue+2, 7001, 7001, C0FE, 
+              D400, queue+1, 4C00, queue+1)
+  load the address of CHARACTER, the IL4 interrupt level routine
+  then store it in 000C to make it active. Issue a read on the 
+  console keyboard and wait  for completion
+
+
+¢ CONSOLE LD CSKB 3F+ ACC FF ST X1 INST LD LOC ACCEPT ACC ( -- )  var: (0000, 7001, CSKB+3F, C0FE, 
+   FE ST X1 INST RETURN           D1FF, 7001, accept, COFE, 
+              D1FE, 4C80, return)
+  load address of the end of the keyboard translation table into accumulator
+  store in work area -1 (character table). load the address of ACCEPT
+  routine and store in work area -2 (accept). return to caller
+  this sets up the parser to read and convert from the console
+
+¢ TYP CHA ENQUEUE      ( -- )  var: (0000, D400, A(1), optional NOP, 0801, 
+            7002, A(1), 0900, 7001, ready, C0FE, 
+            D400, 000C, 7001, typ, C0FE, 
+            D400, queue+2, 7001, 7001, C0FE, 
+            D400, queue+1, 4C00, queue+1)
+  takes word in accumulator and types to console, waiting until it is done
+
+:RED 900;         ( -- 0900)  gen: ()
+  stores in stack character code to shift the console printer to red ribbon
+
+:BLACK 500;       ( -- 0500)  gen: ()
+  stores in stack character code to shift the console printer to black ribbon
+
+¢ RIBBON 0 LS FF MS LOC TYP CALL LD 8100 ACC (n -- )  var: (0000, C200, 72FF, 4400, typ, 
+  LOC TYP CALL RETURN          7001, 8100, C0FE, 4400, typ, 
+             4C80, return)
+  loads the top of stack as a selectric typewriter code and calls TYP to output it,
+  then sets up selectric code for CR and calls TYP to output it
+
+¢ TYPE       (n1 n2 -- )  var: (0000, C200, D001, 7002, 0008 (init),      
+  0 LS 1 ST INST 0 START FF LS LOC FETCH CALL        0000 (index), C0FD, D0FD, C2FF (loop), 
+     BASA SUB 3F ACC POSITIVE IF 3F BASE THEN       4400, fetch, D001, 6700, 000E, 
+  CSCP LD REL LOC TYP CALL FF 1 MSI STOP FE MS RETURN      7001, 003F, 90FE, 4C08, skip, 6700, 
+            003F, C700 (skip), cscp, 4400, typ, 
+            7001, 0001, C0FE, 82FF, D2FF, 
+              74FF, index, 70E7 (B to loop), 
+                 72FE, 4C80, return)
+  Call with memory location and length in stack, will type out the contents as characters
+  load top of stack n2, update init location, set index to initial value (0008 replaced by TOS)
+  load n1, call fetch routine store over 000E, load IX3 with result of fetch,
+  subtract 003F. If positive, load IX3 with 003F, then load CSCP + IX3,
+  call typ to type the character, load 1, add n1, store as n1, reduce index by 1,
+  return to loop again. Once index goes to zero, drop two stack values and return
+
+:MESSAGE BLACK RIBBON TYPE RED RIBBON;  (n1 n2 -- )  gen: ()
+  will set ribbon to black, do CR, type characters from n1 for length n2
+  then set ribbon to red and do another CR
+
+:ALPHA 14 VECTOR;      ( -- )  gen: (load 14 instack and execute VECTOR)
+
+ALPHA        ( -- )  var: (instantiate vector ALPHA, 0008 + 14 cells)
+
+:REPLY ALPHA WTC ALPHA VALUE MESSAGE;  ( -- )  gen: ()
+  converts address of alpha from word to character (2x) and put on stack
+  sticks size of alpha on stack
+  calls message
+
+:D 3 VECTOR;       ( -- )  gen: (load 3 in stack and call VECTOR)
+
+D        ( -- )  var: (instantiate D as 0003 and 3 cells)
+  D(1) holds current track number
+
+:QUERY 8F01 0 GXIO;     ( -- )  gen: (optional NOP, 0801, 7002, 0, 8F01)
+  does an XIO to fetch disk2 status (DSK1 of simulator) and reset conditions
+
+¢ DONE D STORE QUERY REACTIVATE D CLEAR  ( -- )  var: (0000, D400, D, optional NOP, 0801, 
+            7002, 0000, 8F01, 7001, 4C00, C0FE, 
+            D400, query+1, C400, D, 4CC0, return)
+  This is the interrupt handler that saves and restores the accumulator in D
+  then reads and resets disk status, restores the queue and does a BOSC out of interrupt
+
+¢ HOME ZERO D 1+ ST LONG QUERY GAND 0800 ACC ( -- )  var: (0000, 1810, D400, D(1), optional NOP, 0801, 
+   DUP BNZ I 8C04 C8 GXIO ENQUEUE       7002, 0000, 8F01, 7001, 0800, E0FE,
+            4CA0, return, optional NOP, 0801, 
+            7002, 00C8, 8C04, C400, home, 
+            D400, query+2, 7001, 7001, C0FE, 
+            D400, query+1, 4C00, query+1)
+  This zeroes the accumulator, tests the status of disk 2 (DSK1 in simulator)
+  verifies bit 4 (carriage home) to test if the drive is at track 0 already
+  if not, it issues a seek backwards to ensure it is at the home location
+  sticking the address of this routine in the queue and lets it wait until
+  the disk command finishes
+
+
+:IN 154 VECTOR;     ( -- )  gen: (sticks 154 on stack and calls VECTOR)
+
+IN 141 IN=     ( -- )  var: (instantiates IN as 154 cell vector, the
+          stores 141 in the first cell
+
+:BZ BL 18 OR;    ( -- 4818)  gen: ()
+   produces a branch long condition (branch on zero) into stack
+
+:M LD;       ( -- C000)  gen: ()
+   produces a load instruction into stack
+
+:CS MS;       ( -- 7200)  gen: ()
+   produces a modify stack (MDX IX2 into stack
+
+:ZLT ZERO;     ( -- )  gen: (1810)
+   produces a shift left A+E 32 instruction (zeroes ACC and EXT) into variable dictionary
+
+:TS SS;      (n -- )  gen: (D2nn)
+   produces a store stack STO IX2 instruction into variable dictionary
+
+:TM STORE;      (n -- )  gen: (D400, n)
+   produces a store long instruction onto variable dictionary entry
+
+:TR ST INST;     (n -- )  gen: (D0nn)
+   produces a store instruction relative n onto variable dictionary
+
+:TA ST REL;     (n -- )  gen: (D700, n)
+   produces a store instruction to IX3 plus n, put onto variable dictionary
+
+:ST FS;      (n1 n2 -- )  gen: (n1 OR 0200, n2)
+   produces an instruction of type n1 to address n2 using IX2 onto variable dictionary
+
+:MT LONG;      (n1, n2 -- )  gen: (n2 OR 0400, n1)
+   produces a long instruction of type n2, address n1, onto variable dictionary
+
+:RT INST;      (n1 n2 -- )  gen: (n1 OR n2)
+   produces an n1 instruction with relative displacement n2 onto variable dictionary
+
+:AT REL;       (n1 n2 -- )  gen: (n2 OR 0700, n1)
+   produces a long instruction using IX3 onto variable dictionary
+
+:LT SWAP ACC;    (n1 n2 -- )  gen: (7001, n1, n2FE)
+   This will apply an n2 instruction against the constant n1
+
+:FIXUP 6 M RT 3 TAD 3 TXM 3 TR; ( -- )  gen: (C006, 1803, 1083, D003) 
+   this will be part of the next verb, where it grabs a 
+   value later in the verb entry, clears the top and bottom
+   two bits and replaces the value it had fetched
+
+¢ CYLINDER 3 TOD 2 TS D 1+ SUB MT DUP BZ I (n -- )  var: (0000, 1883, D202, 9400, D(1), 4C98, return,
+   POSITIVE IF 3 TOM 3 TXD         4C08, else, 1003 (if), 1883, 4C00, then,
+   ELSE 1 TS 10 TXD ZLT 1 SUB ST        D201 (else), 1890, 1810, 9201, 
+   THEN ALIGN NOP 6 TR          7000 (then), 7000, D006, C006,
+   FIXUP 8C00 0 GXIO 2 M ST D 1+ TM        1803, 1083, D003, 0801, 7002,
+   8 M LT D 2+ TM ENQUEUE         0000, 8C00, C202, D400, D(1), 7001, 0008, 
+             C0FE, D400, D(2), C400, cylinder, D400,
+             queue+2, 7001, 7001, C0FE, D400, queue+1,
+             4C00, queue+1
+   shift accumultor contents right 3, converting sector to cylinder, store in stack+2, 
+   this was called from SECTOR who has sector number n at top of stack, so
+   this temporarily uses stack+1 and stack+2 as work areas
+   subtract D(1), return if not positive (think this is a limit check, 2E0 or higher sector)
+   if not positive, go to else
+   if positive, Shift ACC left 3, shift ACC+E right 3, go to then
+   else - store stack+1, swap, zero acc, subtract stack+1, go to then
+   then - store in location IOCC word 1, the number of cylinders
+   load from IOCC word 2 (command), shift both right 3 and left both 3
+   store as command word, XIO with newly created seek IOCC,
+   load stack+2, store in D(1) which I believe is current track
+   load 0008 and store in D(2), stick cylinder and 7001 in queue 
+   to wait until the seek I/O completes
+   
+
+
+¢ SECTOR 0 M ST LOC CYLINDER CALL 0 M ST FF CS (n -- )  var: (0000, C200, 4400, cylinder, C200, 72FF,
+   7 GAND LT 1 TS D 2+ SUB MT DUP BZ I 1 M ST D 2+ TM     7001, 0007, E0FE, D201, 9400, D(2), 
+   3 TXD ALIGN FIXUP 8E00 IN GXIO ENQUEUE       4C98, sector, C201, D400, D(2), 1883,
+             7000, C006, 1803, 1083, D003, 0801, 
+             7002, in, 8E00, in, C400, sector,
+             D400, queue+2, 7001, 7001, C0FE, 
+             D400, queue+1, 4C00, queue+1
+   take n off stack and call cylinder
+   return, top of stack is sector number
+   drop n from stack
+   AND 0007 with sector number to get
+   head and sector within track
+   load n once again and store in D(2)
+   shift right 3 to get pure cylinder number
+   load buffer address, shift left and right by 3
+   and store in IOCC word 1 then do XIO to initiate read
+   this reads in 141 words (full sector of disk, first
+   word is sector number then 320 cells of data)
+   put SECTOR command in queue and jump to wait till I/O done
+
+¢ WRITE D 2+ M MT 3 TXD ALIGN FIXUP 8D00 IN GXIO ENQUEUE ( -- )  var: (0000, C400, D(2), 1883, 7000,
+              C006, 1803, 1083, D003, 0801, 
+              7002, in, 8D00, C400, write,
+              D400, queue+2, 7001, 7001, C0FE,
+              D400, queue+1, 4C00, queue+1)
+   load D(2), shift right 3 in accumulator
+   load buffer address IN, shift right then left 3
+   and save in IOCC word 1. XIO to Initiate Write
+   stick address of WRITE in queue+2 and 7001 in 
+   queue+1, then jump into wait routine (QUEUE)
+   This writes the buffer IN to disk
+
+:CHARACTER FFFE BSI X1 I FD M X1 RT 1 ADD LT FD X1 TR; ( -- )  gen: (4580, FFFE, C1FD, 7001, 0001, 80FE,               D1FD)
+   call routine at workarea (IX1)-2, the accept routine
+   load IX1 with current character pointer (workarea-3)
+   add 1 to tht value and store back in workarea-3
+        This will accept a character from the current input stream,
+   which is disk or console, bumping the character pointer
+
+
+:REP FE M ST 2 TR 0 M X1 RT 3C SUB LT SWAP DUP BZ I SWAP   (n1 n2 n3 -- n1 n2 n3)  gen: (C2FE, D002, C100, 
+   0 M ST DEP CALL 0 1 MSI;               7001, 003C, 90FE,                  4C98, n1, C200,
+                4400, deposit, 
+                7001, 0001, C0FE,
+                8200, D200)
+   n1 is the test character
+   n2 is the routine to branch to if the character is a match
+   n3 is a character to deposit as a replacement
+   grab stack -2 (n1) and store as test character (replace 3C)
+   load current character (IX1 is workarea)
+   subtract the test value (3C normally)
+   branch indirect to n2 if not positive
+   load top of stack (n3) and call deposit
+   bump n3 and save in stack
+   
+
+¢ FILL 28 START CHARACTER REP STOP   (n1 n2 n3 -- )  var: (0000, 7002, 0028, 0020 (index), C0FD, D0FD, 
+   8100 M LT LOC TP CALL RETURN      (loop) 4580, FFFE, C1FD, 7001, 0001, 80FE, D1FD, 
+           C2FE, D002, C100, 7001, 003C, 90FE, 4C98, fill, 
+           C200, 4400, deposit, 7001, 0001, C0FE, 8200, D200, 
+           74FF, index, 70E6, 7001, 8100, C0FE, 4400, typ,
+           4C80, return)
+   n1 is test value
+   
+   set up loop count to initial value of 0028 (40 decimal) and loop till it reaches zero
+   branch to workarea (IX1) - 2, the accept routine. Load character pointer at IX1 -3
+   bump address by 1 and store in IX1-3. load n1 and store as test value
+   pick up the current character value, subtract test value, and return if not positive
+   get n3, call deposit, bump up n3 by 1, decrement the index and loop unless zero
+   if zero, load 8100 (CR), call typ, and return
+   This loops to fill the input area with 40 characters 
+
+¢ BLANK 0 M ST 1 TOD FF CS LX X3 GOR LT (n -- n)  var: (0000, C200, 1881, 72FF, 7001, 6300, E8FE, 
+   0 TR 0 M ST 1 TOD 1 SUB LT 5 TR 224 M LT 0 MARK     D000, 6314, 1881, 7001, 0001, 90FE, D005, 
+     0 TA LOOP RETURN          7001, 2424, C0FE, 6300, D700, 3189, 73FF, 
+             70FC, 4C80, return)
+   load top of stack (n), shift acc+ext right 1, drop, OR with 6300, store as value 
+   to load in IX3. Load IX3 with that value. divide by 2 and subtract 1. use this as 
+   word (cell) address for storing characters. load two blanks, load IX3 with 0, 
+   store into the calculated address, decrement IX3, skip the loop and return
+
+¢ LIZ ALPHA WTC M LT 1 TS 2 TS  ( -- )  var: ()
+   28 M LT 3 TS 3 CS LOC BLANK CALL
+   LOC FILL CALL 0 M ST FF SBU ST ALPHA TM FD CS RETURN
+
+¢ ' 3C M LT 1 TS 1 CS LOC LIZ CALL RETURN  ( -- )  var: ()
+
+¢ ( 2F M LT 1 TS 1 CS LOC LIZ CALL RETURN  ( -- )  var: ()
+
+:$ 'OK' REPLY;     ( -- )  gen: (creates string with OK and )
+
+:FILE 7 VECTOR;       ( -- )  gen: ()
+
+FILE         ( -- )  var: ()
+
+:LINE INTEGER;      ( -- )  gen: ()
+
+¢ POSITION 0 M ST 4 TOD 1 CS 0 TS    ( -- )  var: ()
+     LOC SECTOR CALL 0 M ST F GAND LT 14 MUL LT XCH
+     IN ADD LT 0 TS RETURN
+
+¢ FILL 28 START LOC ACCEPT CALL REP STOP RETURN  ( -- )  var: ()
+
+:L LINE VALUE;       ( -- )  gen: ()
+   
+:RELATIVE FILE 5+ VALUE+;    ( -- )  gen: ()
+
+:T DUP LINE= RELATIVE POSITION WTC 28 MESSAGE; ( -- )  gen: ()
+
+:EXAMINE SWAP IN WTC + SWAP MESSAGE;  ( -- )  gen: ()
+
+:EMPLACE 3C IN WTC+ 28 FILL DROP DROP DROP WRITE; ( -- )  gen: ()
+
+:S INTEGER;       ( -- )  gen: ()
+
+:SV S VALUE;      ( -- )  gen: ()
+
+:MOVE TRANSIENT MARK SWAP M AT SWAP TA LOOP EXECUTE; ( -- )  gen: ()
+
+:COMPARE 2 TR MARK 0 M AT SWAP SUB AT EQUAL IF SWAP LOOP ELSE; ( -- )  gen: ()
+
+¢ SEARCH IN 6- M LT S TM IN 1+ M MT 1 TR 0 START ( -- )  var: ()
+   S 7 MDM S M MT ALPHA 4 COMPARE SWAP STOP THEN 1 CS
+   0 TS RETURN
+
+:CREATE 2E0 SECTOR IN 1+ DUP INC 1- 7*+ S= SV VALUE 1+ SV 5+= ( -- )  gen: ()
+    RAISE SV 6+= RAISE F+ SV 7+= SV ALPHA 4 MOVE WRITE;    card 200
+
+:WARN 'NO SUCH FILE' REPLY;    ( -- )  gen: ()
+
+:ACTIVATE 2E0 SECTOR SEARCH NONZERO WARN FIL SV 7 MOVE; ( -- )  gen: ()
+
+:DELETE 2E0 SECTOR 0 SV 1+= WRITE;  ( -- )  gen: ()
+
+:SEC INTEGER;     ( -- )  gen: ()
+
+OPERATON STRAIGHT FD X1 M RT IN 140+ WTC SUB LT EQUAL IF ( -- )  var: ()
+  SEC 1 MDM SEC M MT 1 CS 0 TS LOC SECTOR CALL
+   IN WTC M LT FD X1 TR THEN
+   FD X1 M RT LOC FETCH CALL RETURN
+
+¢ SET LOC STRAIGHT M LT FE X1 TR  ( -- )  var: ()
+   0 M ST FF CS FD X1 TR RETURN
+
+:INTERPRET TOP FILE 5+ VALUE 10/ 14* IN+ WTC ( -- )  gen: ()
+   SWAP DUP SEC= SECTOR SET;
+
+:RETRIEVE ACTIVATE INTERPRET;   ( -- )  gen: ()
+
+:XT SX INST 0 M LT;    ( -- )  gen: ()
+
+¢ FORGET 1 X3 XT E TM 4 SUB LT E1 TM 3 X3 M RT  ( -- )  var: ()
+  IC TM RETURN
+
+¢ REMEMBER LOC ENTRY CALL   ( -- )  var: ()
+   LOC FORGET M LT 2 X3 TR IC M MT 3 X3 TR RETURN
+
+LOC DONE 0A= HOME 'HI THERE' REPLY CONSOLE
